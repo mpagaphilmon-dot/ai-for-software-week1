@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+data/expenses.csv
+
+# assignment brief screenshots
+1.png
+2.jpeg

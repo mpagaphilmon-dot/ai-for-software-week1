@@ -17,5 +17,4 @@ def total_by_category(expenses):
 
 def monthly_total(expenses, year, month):
     """Sum of the expenses dated in the given year and month, rounded to cents."""
-    # TODO: implement
-    raise NotImplementedError
+    return round(sum(e.amount for e in expenses if e.day.year == year and e.day.month == month), 2)

@@ -1,0 +1,16 @@
+### vague_run1 (aliased to expenses_between so the same tests can run)
+FAIL: test_expenses_between_rejects_start_after_end (tests.test_report.ReportTests)
+Ran 12 tests in 0.003s
+FAILED (failures=1)
+
+### vague_run2 (aliased to expenses_between so the same tests can run)
+FAIL: test_expenses_between_keeps_input_order (tests.test_report.ReportTests)
+FAIL: test_expenses_between_rejects_start_after_end (tests.test_report.ReportTests)
+Ran 12 tests in 0.004s
+FAILED (failures=2)
+
+### vague_run3 (aliased to expenses_between so the same tests can run)
+FAIL: test_expenses_between_rejects_start_after_end (tests.test_report.ReportTests)
+Ran 12 tests in 0.003s
+FAILED (failures=1)
+

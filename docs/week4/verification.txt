@@ -1,0 +1,107 @@
+## a) Full test suite on the agent's change
+> python -m unittest -v
+test_add_normalises_category (tests.test_cli.CliTests) ... ok
+test_add_rejects_blank_category (tests.test_cli.CliTests) ... ok
+test_add_rejects_non_numeric_amount (tests.test_cli.CliTests) ... ok
+test_add_rejects_non_positive_or_non_finite_amount (tests.test_cli.CliTests) ... ok
+test_add_then_summary (tests.test_cli.CliTests) ... ok
+test_average_by_category_is_rounded_and_sorted_largest_first (tests.test_report.ReportTests) ... ok
+test_average_by_category_of_nothing_is_empty (tests.test_report.ReportTests) ... ok
+test_expenses_between_does_not_modify_input (tests.test_report.ReportTests) ... ok
+test_expenses_between_includes_both_bounds (tests.test_report.ReportTests) ... ok
+test_expenses_between_keeps_input_order (tests.test_report.ReportTests) ... ok
+test_expenses_between_of_nothing_is_empty (tests.test_report.ReportTests) ... ok
+test_expenses_between_rejects_start_after_end (tests.test_report.ReportTests) ... ok
+test_monthly_total_does_not_mix_years (tests.test_report.ReportTests) ... ok
+test_monthly_total_only_counts_that_month (tests.test_report.ReportTests) ... ok
+test_total (tests.test_report.ReportTests) ... ok
+test_total_by_category_is_sorted_largest_first (tests.test_report.ReportTests) ... ok
+test_total_of_nothing_is_zero (tests.test_report.ReportTests) ... ok
+test_append_to_empty_file_writes_header (tests.test_storage.StorageTests) ... ok
+test_append_to_file_without_trailing_newline (tests.test_storage.StorageTests) ... ok
+test_append_to_normal_file_is_unchanged (tests.test_storage.StorageTests) ... ok
+test_missing_file_is_empty (tests.test_storage.StorageTests) ... ok
+test_round_trip (tests.test_storage.StorageTests) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.105s
+
+OK
+
+## b) New tests against the ORIGINAL cli.py (must fail)
+warning: in the working copy of 'expenses/cli.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'expenses/cli.py', LF will be replaced by CRLF the next time Git touches it
+> python -m unittest tests.test_cli
+FAIL: test_add_rejects_blank_category (tests.test_cli.CliTests) (category='')
+FAIL: test_add_rejects_blank_category (tests.test_cli.CliTests) (category='   ')
+FAIL: test_add_rejects_non_positive_or_non_finite_amount (tests.test_cli.CliTests) (amount='0')
+FAIL: test_add_rejects_non_positive_or_non_finite_amount (tests.test_cli.CliTests) (amount='-5')
+FAIL: test_add_rejects_non_positive_or_non_finite_amount (tests.test_cli.CliTests) (amount='nan')
+FAIL: test_add_rejects_non_positive_or_non_finite_amount (tests.test_cli.CliTests) (amount='inf')
+Ran 5 tests in 0.068s
+FAILED (failures=6)
+warning: in the working copy of 'tests/test_cli.py', LF will be replaced by CRLF the next time Git touches it
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+## c) Manual CLI runs: is each rejection for the right reason?
+> python -m expenses --file x.csv add food 0
+expenses add: error: argument amount: amount must be a finite number greater than 0, got '0'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food -5
+expenses add: error: argument amount: amount must be a finite number greater than 0, got '-5'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food nan
+expenses add: error: argument amount: amount must be a finite number greater than 0, got 'nan'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food inf
+expenses add: error: argument amount: amount must be a finite number greater than 0, got 'inf'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food -inf
+expenses add: error: the following arguments are required: amount
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food 1e400
+expenses add: error: argument amount: amount must be a finite number greater than 0, got '1e400'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add food abc
+expenses add: error: argument amount: invalid amount: 'abc'
+  exit=2  file exists: no
+> python -m expenses --file x.csv add '' 5
+expenses add: error: argument category: category must not be empty
+  exit=2  file exists: no
+> python -m expenses --file x.csv add '   ' 5
+expenses add: error: argument category: category must not be empty
+  exit=2  file exists: no
+
+## d) Valid input still works
+> add ' Food ' 12.50 --note lunch --date 2026-11-01
+Added 12.50 to food
+exit=0
+> add food 0.01
+Added 0.01 to food
+exit=0
+> cat x.csv
+date,category,amount,note
+2026-11-01,food,12.50,lunch
+2026-11-09,food,0.01,
+
+## e) Existing ledger unaffected: summary of data/sample.csv before vs after
+rent            650.00
+food             71.15
+transport         6.40
+total           727.55
+identical before/after
+
+## f) Files changed vs baseline
+ M expenses/cli.py
+ M tests/test_cli.py
+
+## g) Edge cases found while reviewing
+> add food -- -inf      (force -inf to be read as the amount)
+expenses add: error: argument amount: amount must be a finite number greater than 0, got '-inf'
+  exit=2  file exists: no
+> add food 0.001
+Added 0.00 to food
+  exit=0
+> cat x.csv
+date,category,amount,note
+2026-11-09,food,0.00,

@@ -1,0 +1,2 @@
+claude -p "$(cat docs/week5/prompts/task.txt)" --permission-mode acceptEdits --allowedTools "Read" "Glob" "Grep" "Edit" "Write" "Bash(python -m unittest*)" "PowerShell(python -m unittest*)" --output-format stream-json --verbose
+claude -p "$(cat docs/week5/prompts/source_probe.txt)" --allowedTools "Read" "Glob" "Grep" --output-format stream-json --verbose   # x2 per copy

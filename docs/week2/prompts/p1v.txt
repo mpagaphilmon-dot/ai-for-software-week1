@@ -1,0 +1,1 @@
+add an average function to report.py

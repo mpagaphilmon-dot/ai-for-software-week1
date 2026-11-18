@@ -1,0 +1,7 @@
+# All runs: Claude Code 2.1.322, model Claude Opus 5.5, in an isolated copy of the repo with its own git history (copy_git_log.txt).
+# Each run is a fresh session (no memory of the previous step); context is passed only through the prompt file.
+# Read-only runs (1 spec review, 2 plan, 5 code review):
+claude -p "$(cat docs/week6/prompts/N_name.txt)" --allowedTools "Read" "Glob" "Grep" --output-format stream-json --verbose
+# Editing runs (3 tests, 4 implement):
+claude -p "$(cat docs/week6/prompts/N_name.txt)" --permission-mode acceptEdits --allowedTools "Read" "Glob" "Grep" "Edit" "Write" "Bash(python -m unittest*)" "PowerShell(python -m unittest*)" --output-format stream-json --verbose
+# Logs -> outputs/N_name.jsonl; python docs/week6/extract.py outputs/N_name.jsonl -> N_name_final.md + N_name_toolcalls.txt

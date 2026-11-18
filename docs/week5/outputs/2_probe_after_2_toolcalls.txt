@@ -1,0 +1,3 @@
+Read: after\expenses\report.py
+Grep: expenses_between path=after\tests
+-- turns=3 cost=$0.15 duration=12s denials=0

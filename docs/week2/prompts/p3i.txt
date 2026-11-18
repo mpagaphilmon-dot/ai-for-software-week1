@@ -1,0 +1,15 @@
+Intent: expenses/cli.py has no tests. I want a few tests that would catch it if the `add` and `summary` commands broke, without touching my real data file.
+
+Context: cli.main(argv) takes a list of arguments and returns an exit code; it prints with print(). The --file option picks the CSV file. The existing tests (tests/test_report.py, tests/test_storage.py) use unittest and tempfile.TemporaryDirectory.
+
+Task: create tests/test_cli.py with exactly these three tests:
+1. `add` then `summary` on a temporary file. Example: main(["--file", path, "add", "Food", "12.5", "--note", "lunch"]) returns 0 and prints "Added 12.50 to food"; then `summary` prints a line starting with "food" containing "12.50", and a "total" line containing "12.50".
+2. `add` normalises the category: " Food " is stored as "food" (check with storage.load_expenses).
+3. `add` with a non-numeric amount ("abc") exits with SystemExit code 2 (argparse's behaviour).
+
+Constraints:
+- unittest and the standard library only (capture output with contextlib.redirect_stdout / redirect_stderr). No pytest, no mocking libraries.
+- Never read or write data/expenses.csv; always pass --file with a temp path.
+- Do not change any file except the new tests/test_cli.py.
+
+Definition of done: `python -m unittest` passes (run it) and you reply with the new file and the test output.

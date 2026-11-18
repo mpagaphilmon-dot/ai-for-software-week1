@@ -1,0 +1,42 @@
+You are reviewing a feature spec BEFORE any code is written. Do not edit any files.
+
+The original request from the user was:
+"Can it tell me what I spent this month? Maybe split by category too, I never know where the money goes."
+
+My draft spec is below. Read the code in expenses/ and tests/ (follow CLAUDE.md) and then critique the spec only:
+1. Which requirements are ambiguous or not testable as written? Rewrite each one as a testable EARS-style statement (When/If/While ... the system shall ...).
+2. Which edge cases and error cases are missing?
+3. Which decisions does the spec leave to the implementer that the user should make instead? Recommend an answer for each.
+4. What should be added to "Out of scope" so an agent does not invent extra work?
+5. Is any acceptance criterion wrong? Check numbers against data/sample.csv.
+Be concise. Answer as a numbered list.
+
+--- DRAFT SPEC ---
+# Spec v1 (draft): `month` command
+
+## User goal
+See how much I spent in one calendar month, and where it went (per category).
+
+## Input
+`python -m expenses [--file FILE] month YYYY-MM`, e.g. `month 2026-09`.
+
+## Output
+- One line per category that has expenses in that month, largest total first, same format as `summary`.
+- Then a `total` line with the month's total.
+
+## Requirements
+- R1. When the user runs `month YYYY-MM`, the system shall print the per-category totals for expenses dated in that month.
+- R2. The system shall then print a `total` line with the sum of that month's expenses.
+- R3. If the month is invalid, the system shall show an error.
+- R4. If there are no expenses in that month, the system shall print a total of 0.
+
+## Constraints
+- Standard library only.
+- Reuse `report.py` (`monthly_total`, `total_by_category`).
+
+## Acceptance criteria
+- `month 2026-09` on `data/sample.csv` shows rent, food, transport and the total 714.60.
+- `month 2026-13` fails.
+
+## Out of scope
+- Budgets, charts.

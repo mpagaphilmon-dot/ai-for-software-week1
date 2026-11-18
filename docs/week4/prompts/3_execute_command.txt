@@ -1,0 +1,1 @@
+claude -p "$(cat 3_execute.txt)" --permission-mode default --allowedTools "Read" "Glob" "Grep" "Edit(./expenses/cli.py)" "Edit(./tests/test_cli.py)" --output-format stream-json --verbose

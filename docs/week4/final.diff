@@ -1,0 +1,74 @@
+diff --git a/expenses/cli.py b/expenses/cli.py
+index 28ac796..480d620 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -1,4 +1,5 @@
+ import argparse
++import math
+ from datetime import date
+ 
+ from expenses.models import Expense
+@@ -8,14 +9,30 @@ from expenses.storage import append_expense, load_expenses
+ DEFAULT_FILE = "data/expenses.csv"
+ 
+ 
++def positive_amount(text):
++    try:
++        value = float(text)
++    except ValueError:
++        raise argparse.ArgumentTypeError(f"invalid amount: {text!r}")
++    if not math.isfinite(value) or value <= 0:
++        raise argparse.ArgumentTypeError(f"amount must be a finite number greater than 0, got {text!r}")
++    return value
++
++
++def non_empty_category(text):
++    if not text.strip():
++        raise argparse.ArgumentTypeError("category must not be empty")
++    return text
++
++
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="expenses", description="Track expenses in a CSV file.")
+     parser.add_argument("--file", default=DEFAULT_FILE, help="CSV file to read and write")
+     commands = parser.add_subparsers(dest="command", required=True)
+ 
+     add = commands.add_parser("add", help="record a new expense")
+-    add.add_argument("category")
+-    add.add_argument("amount", type=float)
++    add.add_argument("category", type=non_empty_category)
++    add.add_argument("amount", type=positive_amount)
+     add.add_argument("--note", default="")
+     add.add_argument("--date", type=date.fromisoformat, default=None, help="YYYY-MM-DD, defaults to today")
+ 
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index fac2bb4..77d060b 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -51,6 +51,26 @@ class CliTests(unittest.TestCase):
+             self.assertEqual(ctx.exception.code, 2)
+             self.assertFalse(path.exists())
+ 
++    def test_add_rejects_non_positive_or_non_finite_amount(self):
++        for amount in ["0", "-5", "nan", "inf"]:
++            with self.subTest(amount=amount), tempfile.TemporaryDirectory() as tmp:
++                path = Path(tmp) / "expenses.csv"
++                with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
++                    with self.assertRaises(SystemExit) as ctx:
++                        main(["--file", str(path), "add", "Food", amount])
++                self.assertEqual(ctx.exception.code, 2)
++                self.assertFalse(path.exists())
++
++    def test_add_rejects_blank_category(self):
++        for category in ["", "   "]:
++            with self.subTest(category=category), tempfile.TemporaryDirectory() as tmp:
++                path = Path(tmp) / "expenses.csv"
++                with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
++                    with self.assertRaises(SystemExit) as ctx:
++                        main(["--file", str(path), "add", category, "5"])
++                self.assertEqual(ctx.exception.code, 2)
++                self.assertFalse(path.exists())
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

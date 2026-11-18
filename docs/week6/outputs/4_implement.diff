@@ -1,0 +1,90 @@
+diff --git a/README.md b/README.md
+index b1391ac..db7c5b5 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,7 @@ python -m expenses add food 12.50 --note lunch
+ python -m expenses list
+ python -m expenses summary
+ python -m expenses between 2026-09-03 2026-09-15
++python -m expenses month 2026-09
+ python -m expenses --file data/sample.csv summary
+ ```
+ 
+diff --git a/expenses/cli.py b/expenses/cli.py
+index f33f4ad..a7b2aab 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -3,7 +3,7 @@ import math
+ from datetime import date
+ 
+ from expenses.models import Expense
+-from expenses.report import expenses_between, total, total_by_category
++from expenses.report import expenses_between, expenses_in_month, monthly_total, total, total_by_category
+ from expenses.storage import append_expense, load_expenses
+ 
+ DEFAULT_FILE = "data/expenses.csv"
+@@ -32,6 +32,18 @@ def iso_date(text):
+         raise argparse.ArgumentTypeError(f"invalid date: {text!r}, expected YYYY-MM-DD")
+ 
+ 
++def year_month(text):
++    error = argparse.ArgumentTypeError(f"invalid month: {text!r}, expected YYYY-MM")
++    # fromisoformat alone accepts other ISO shapes on 3.11+, so check YYYY-MM first.
++    if not (len(text) == 7 and text.isascii() and text[4] == "-" and text[:4].isdigit() and text[5:].isdigit()):
++        raise error
++    try:
++        day = date.fromisoformat(f"{text}-01")
++    except ValueError:
++        raise error
++    return day.year, day.month
++
++
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="expenses", description="Track expenses in a CSV file.")
+     parser.add_argument("--file", default=DEFAULT_FILE, help="CSV file to read and write")
+@@ -52,6 +64,9 @@ def build_parser():
+     # start > end needs both values, so it is checked after parsing; report it
+     # through this subparser so the usage line matches its other errors.
+     between.set_defaults(error=between.error)
++
++    month_cmd = commands.add_parser("month", help="show one month's totals per category, then the month total")
++    month_cmd.add_argument("month", nargs="?", type=year_month, default=None, help="YYYY-MM, defaults to the current month")
+     return parser
+ 
+ 
+@@ -86,6 +101,17 @@ def main(argv=None):
+         print(f"{'total':<12} {total(selected):>9.2f}")
+         return 0
+ 
++    if args.command == "month":
++        if args.month is None:
++            today = date.today()
++            year, month = today.year, today.month
++        else:
++            year, month = args.month
++        for category, amount in total_by_category(expenses_in_month(expenses, year, month)).items():
++            print(f"{category:<12} {amount:>9.2f}")
++        print(f"{'total':<12} {monthly_total(expenses, year, month):>9.2f}")
++        return 0
++
+     for category, amount in total_by_category(expenses).items():
+         print(f"{category:<12} {amount:>9.2f}")
+     print(f"{'total':<12} {total(expenses):>9.2f}")
+diff --git a/expenses/report.py b/expenses/report.py
+index e15dda7..fc7ad81 100644
+--- a/expenses/report.py
++++ b/expenses/report.py
+@@ -32,6 +32,13 @@ def monthly_total(expenses, year, month):
+     return round(sum(e.amount for e in expenses if e.day.year == year and e.day.month == month), 2)
+ 
+ 
++def expenses_in_month(expenses, year, month):
++    """Expenses dated in the given year and month, in their original order (no rounding)."""
++    if not 1 <= month <= 12:
++        raise ValueError("month must be from 1 to 12")
++    return [e for e in expenses if e.day.year == year and e.day.month == month]
++
++
+ # expenses_between(expenses, start, end) -> list of Expense
+ # Data shape: `expenses` is a list of Expense records (expenses/models.py) whose
+ #   `day` is a datetime.date; `start` and `end` are datetime.date objects, not strings.

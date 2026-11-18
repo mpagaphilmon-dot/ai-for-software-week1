@@ -1,0 +1,52 @@
+diff -ruN -x __pycache__ -x handedit.csv -x r.csv orig/expenses/storage.py run_debug/expenses/storage.py
+--- orig/expenses/storage.py	2026-10-23 15:55:34.480812300 +0200
++++ run_debug/expenses/storage.py	2026-10-23 15:59:01.334507900 +0200
+@@ -36,8 +36,18 @@
+     is_new = not path.exists()
+     path.parent.mkdir(parents=True, exist_ok=True)
+ 
++    # A hand-edited file may lack a trailing newline; without one the new
++    # row would be glued onto the end of the last line.
++    needs_newline = False
++    if not is_new and path.stat().st_size > 0:
++        with path.open("rb") as f:
++            f.seek(-1, 2)
++            needs_newline = f.read(1) not in (b"\n", b"\r")
++
+     with path.open("a", newline="", encoding="utf-8") as f:
+         writer = csv.DictWriter(f, fieldnames=FIELDS)
++        if needs_newline:
++            f.write("\r\n")
+         if is_new:
+             writer.writeheader()
+         writer.writerow(
+diff -ruN -x __pycache__ -x handedit.csv -x r.csv orig/tests/test_storage.py run_debug/tests/test_storage.py
+--- orig/tests/test_storage.py	2026-10-23 15:55:34.489477000 +0200
++++ run_debug/tests/test_storage.py	2026-10-23 15:59:06.052259600 +0200
+@@ -20,6 +20,26 @@
+             append_expense(path, expense)
+             self.assertEqual(load_expenses(path), [expense, expense])
+ 
++    def test_append_to_file_without_trailing_newline(self):
++        existing = Expense(date(2026, 9, 2), "food", 12.5, "lunch")
++        added = Expense(date(2026, 9, 3), "food", 5.0, "snack")
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "handedit.csv"
++            path.write_bytes(b"date,category,amount,note\n2026-09-02,food,12.50,lunch")
++            append_expense(path, added)
++            self.assertEqual(load_expenses(path), [existing, added])
++
++    def test_append_to_normal_file_is_unchanged(self):
++        added = Expense(date(2026, 9, 3), "food", 5.0, "snack")
++        original = b"date,category,amount,note\r\n2026-09-02,food,12.50,lunch\r\n"
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            path.write_bytes(original)
++            append_expense(path, added)
++            self.assertEqual(
++                path.read_bytes(), original + b"2026-09-03,food,5.00,snack\r\n"
++            )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

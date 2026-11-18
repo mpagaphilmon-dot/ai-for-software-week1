@@ -1,0 +1,15 @@
+Intent: I am new to this repo and I will soon add a "delete expense" feature, which means changing expenses/storage.py. Before I touch it I need to know exactly how it reads and writes the CSV file.
+
+Explain expenses/storage.py by answering these questions:
+1. What does load_expenses return if the file does not exist? Does it create the file?
+2. When is the header row written?
+3. How is each field converted on load and on save (date, category, amount, note)?
+4. What does the file look like on disk after two calls to append_expense on a new path? Show the exact text.
+
+Constraints:
+- Under 220 words.
+- Every claim must cite the line number it comes from. If something is not in the code, say "not in the code" instead of guessing.
+- Explain only; do not suggest or make changes.
+
+Example of the format I want for each point:
+- L13-14: missing file -> returns [] and does not create the file.

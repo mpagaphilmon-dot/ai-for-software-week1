@@ -1,0 +1,6 @@
+2026-09-02 food 12.5
+2026-09-03 transport 3.2
+2026-09-10 food 48.9
+2026-09-15 rent 650.0
+September total: 714.6
+swapped -> ValueError start must not be after end

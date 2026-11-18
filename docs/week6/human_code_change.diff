@@ -1,0 +1,13 @@
+diff --git a/expenses/cli.py b/expenses/cli.py
+index a7b2aab..d826bba 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -66,7 +66,7 @@ def build_parser():
+     between.set_defaults(error=between.error)
+ 
+     month_cmd = commands.add_parser("month", help="show one month's totals per category, then the month total")
+-    month_cmd.add_argument("month", nargs="?", type=year_month, default=None, help="YYYY-MM, defaults to the current month")
++    month_cmd.add_argument("month", nargs="?", type=year_month, default=None, metavar="YYYY-MM", help="defaults to the current month")
+     return parser
+ 
+ 

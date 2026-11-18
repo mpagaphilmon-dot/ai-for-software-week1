@@ -1,0 +1,43 @@
+diff -ruN -x __pycache__ -x handedit.csv -x r.csv orig/expenses/report.py run_p1v/expenses/report.py
+--- orig/expenses/report.py	2026-10-23 15:55:34.465023700 +0200
++++ run_p1v/expenses/report.py	2026-10-23 15:57:48.047596500 +0200
+@@ -6,6 +6,14 @@
+     return round(sum(e.amount for e in expenses), 2)
+ 
+ 
++def average(expenses):
++    """Mean expense amount, rounded to cents; zero when there are no expenses."""
++    expenses = list(expenses)
++    if not expenses:
++        return 0
++    return round(sum(e.amount for e in expenses) / len(expenses), 2)
++
++
+ def total_by_category(expenses):
+     """Map each category to its total, sorted from largest to smallest."""
+     totals = defaultdict(float)
+diff -ruN -x __pycache__ -x handedit.csv -x r.csv orig/tests/test_report.py run_p1v/tests/test_report.py
+--- orig/tests/test_report.py	2026-10-23 15:55:34.497504300 +0200
++++ run_p1v/tests/test_report.py	2026-10-23 15:57:51.895018000 +0200
+@@ -2,7 +2,7 @@
+ from datetime import date
+ 
+ from expenses.models import Expense
+-from expenses.report import monthly_total, total, total_by_category
++from expenses.report import average, monthly_total, total, total_by_category
+ 
+ EXPENSES = [
+     Expense(date(2026, 9, 2), "food", 12.50),
+@@ -18,6 +18,12 @@
+     def test_total_of_nothing_is_zero(self):
+         self.assertEqual(total([]), 0)
+ 
++    def test_average(self):
++        self.assertEqual(average(EXPENSES), 8.48)
++
++    def test_average_of_nothing_is_zero(self):
++        self.assertEqual(average([]), 0)
++
+     def test_total_by_category_is_sorted_largest_first(self):
+         self.assertEqual(list(total_by_category(EXPENSES).items()), [("food", 22.25), ("transport", 3.20)])
+ 

@@ -1,0 +1,291 @@
+diff --git a/README.md b/README.md
+index b1391ac..db7c5b5 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,7 @@ python -m expenses add food 12.50 --note lunch
+ python -m expenses list
+ python -m expenses summary
+ python -m expenses between 2026-09-03 2026-09-15
++python -m expenses month 2026-09
+ python -m expenses --file data/sample.csv summary
+ ```
+ 
+diff --git a/expenses/cli.py b/expenses/cli.py
+index f33f4ad..d826bba 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -3,7 +3,7 @@ import math
+ from datetime import date
+ 
+ from expenses.models import Expense
+-from expenses.report import expenses_between, total, total_by_category
++from expenses.report import expenses_between, expenses_in_month, monthly_total, total, total_by_category
+ from expenses.storage import append_expense, load_expenses
+ 
+ DEFAULT_FILE = "data/expenses.csv"
+@@ -32,6 +32,18 @@ def iso_date(text):
+         raise argparse.ArgumentTypeError(f"invalid date: {text!r}, expected YYYY-MM-DD")
+ 
+ 
++def year_month(text):
++    error = argparse.ArgumentTypeError(f"invalid month: {text!r}, expected YYYY-MM")
++    # fromisoformat alone accepts other ISO shapes on 3.11+, so check YYYY-MM first.
++    if not (len(text) == 7 and text.isascii() and text[4] == "-" and text[:4].isdigit() and text[5:].isdigit()):
++        raise error
++    try:
++        day = date.fromisoformat(f"{text}-01")
++    except ValueError:
++        raise error
++    return day.year, day.month
++
++
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="expenses", description="Track expenses in a CSV file.")
+     parser.add_argument("--file", default=DEFAULT_FILE, help="CSV file to read and write")
+@@ -52,6 +64,9 @@ def build_parser():
+     # start > end needs both values, so it is checked after parsing; report it
+     # through this subparser so the usage line matches its other errors.
+     between.set_defaults(error=between.error)
++
++    month_cmd = commands.add_parser("month", help="show one month's totals per category, then the month total")
++    month_cmd.add_argument("month", nargs="?", type=year_month, default=None, metavar="YYYY-MM", help="defaults to the current month")
+     return parser
+ 
+ 
+@@ -86,6 +101,17 @@ def main(argv=None):
+         print(f"{'total':<12} {total(selected):>9.2f}")
+         return 0
+ 
++    if args.command == "month":
++        if args.month is None:
++            today = date.today()
++            year, month = today.year, today.month
++        else:
++            year, month = args.month
++        for category, amount in total_by_category(expenses_in_month(expenses, year, month)).items():
++            print(f"{category:<12} {amount:>9.2f}")
++        print(f"{'total':<12} {monthly_total(expenses, year, month):>9.2f}")
++        return 0
++
+     for category, amount in total_by_category(expenses).items():
+         print(f"{category:<12} {amount:>9.2f}")
+     print(f"{'total':<12} {total(expenses):>9.2f}")
+diff --git a/expenses/report.py b/expenses/report.py
+index e15dda7..fc7ad81 100644
+--- a/expenses/report.py
++++ b/expenses/report.py
+@@ -32,6 +32,13 @@ def monthly_total(expenses, year, month):
+     return round(sum(e.amount for e in expenses if e.day.year == year and e.day.month == month), 2)
+ 
+ 
++def expenses_in_month(expenses, year, month):
++    """Expenses dated in the given year and month, in their original order (no rounding)."""
++    if not 1 <= month <= 12:
++        raise ValueError("month must be from 1 to 12")
++    return [e for e in expenses if e.day.year == year and e.day.month == month]
++
++
+ # expenses_between(expenses, start, end) -> list of Expense
+ # Data shape: `expenses` is a list of Expense records (expenses/models.py) whose
+ #   `day` is a datetime.date; `start` and `end` are datetime.date objects, not strings.
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 7b8ed59..c13570c 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -2,11 +2,22 @@ import io
+ import tempfile
+ import unittest
+ from contextlib import redirect_stderr, redirect_stdout
++from datetime import date
+ from pathlib import Path
+ 
+ from expenses.cli import main
+ from expenses.storage import load_expenses
+ 
++# The rows of data/sample.csv, rebuilt with `add --date` in a temp file.
++SAMPLE_ROWS = [
++    ("2026-09-02", "food", "12.50"),
++    ("2026-09-03", "transport", "3.20"),
++    ("2026-09-10", "food", "48.90"),
++    ("2026-09-15", "rent", "650.00"),
++    ("2026-10-01", "transport", "3.20"),
++    ("2026-10-04", "food", "9.75"),
++]
++
+ 
+ def run(argv):
+     out = io.StringIO()
+@@ -15,6 +26,15 @@ def run(argv):
+     return code, out.getvalue()
+ 
+ 
++def add_rows(path, rows):
++    for day, category, amount in rows:
++        run(["--file", path, "add", category, amount, "--date", day])
++
++
++def line(label, amount):
++    return f"{label:<12} {amount:>9.2f}"
++
++
+ class CliTests(unittest.TestCase):
+     def test_add_then_summary(self):
+         with tempfile.TemporaryDirectory() as tmp:
+@@ -124,6 +144,109 @@ class CliTests(unittest.TestCase):
+             self.assertEqual(ctx.exception.code, 2)
+             self.assertIn("expenses between: error: start date 2026-09-15 must not be after", err.getvalue())
+ 
++    def test_month_shows_categories_largest_first_then_total(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, SAMPLE_ROWS)
++            code, out = run(["--file", path, "month", "2026-09"])
++            self.assertEqual(code, 0)
++            self.assertEqual(
++                out.splitlines(),
++                [line("rent", 650), line("food", 61.40), line("transport", 3.20), line("total", 714.60)],
++            )
++
++    def test_month_october(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, SAMPLE_ROWS)
++            code, out = run(["--file", path, "month", "2026-10"])
++            self.assertEqual(code, 0)
++            # Exact list equality also checks the order: food before transport.
++            self.assertEqual(
++                out.splitlines(),
++                [line("food", 9.75), line("transport", 3.20), line("total", 12.95)],
++            )
++
++    def test_month_with_no_matches_prints_zero_total(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, SAMPLE_ROWS)
++            code, out = run(["--file", path, "month", "2025-09"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), [line("total", 0)])
++
++    def test_month_on_missing_or_empty_file_prints_zero_total(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            missing = Path(tmp) / "missing.csv"
++            empty = Path(tmp) / "empty.csv"
++            empty.write_text("", encoding="utf-8")
++            for path in [missing, empty]:
++                with self.subTest(path=path.name):
++                    code, out = run(["--file", str(path), "month", "2026-09"])
++                    self.assertEqual(code, 0)
++                    self.assertEqual(out.splitlines(), [line("total", 0)])
++            self.assertFalse(missing.exists())
++
++    def test_month_excludes_neighbouring_months(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, [
++                ("2026-11-30", "food", "1"),
++                ("2026-12-01", "food", "2"),
++                ("2026-12-31", "transport", "4"),
++                ("2027-01-01", "food", "8"),
++            ])
++            code, out = run(["--file", path, "month", "2026-12"])
++            self.assertEqual(code, 0)
++            self.assertEqual(
++                out.splitlines(),
++                [line("transport", 4), line("food", 2), line("total", 6)],
++            )
++
++    def test_month_ties_keep_first_appearance_order(self):
++        # Added in human review: the spec's tie rule had no test. Alphabetical
++        # order would put food first, so this catches a tie-break by name.
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, [("2026-09-01", "transport", "5"), ("2026-09-02", "food", "5")])
++            code, out = run(["--file", path, "month", "2026-09"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), [line("transport", 5), line("food", 5), line("total", 10)])
++
++    def test_month_defaults_to_current_month(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            run(["--file", path, "add", "food", "7"])
++            today = date.today()
++            other = "2025-01-01" if (today.year, today.month) != (2025, 1) else "2025-02-01"
++            run(["--file", path, "add", "rent", "500", "--date", other])
++            code, out = run(["--file", path, "month"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), [line("food", 7), line("total", 7)])
++
++    def test_month_does_not_write_file(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            add_rows(str(path), SAMPLE_ROWS)
++            before = path.read_bytes()
++            code, _ = run(["--file", str(path), "month", "2026-09"])
++            self.assertEqual(code, 0)
++            self.assertEqual(path.read_bytes(), before)
++
++    def test_month_rejects_invalid_month(self):
++        for text in ["2026-13", "2026-00", "2026-9", "2026-09-15", "abc", "202609", ""]:
++            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
++                path = Path(tmp) / "expenses.csv"
++                out = io.StringIO()
++                err = io.StringIO()
++                with redirect_stderr(err), redirect_stdout(out):
++                    with self.assertRaises(SystemExit) as ctx:
++                        main(["--file", str(path), "month", text])
++                self.assertEqual(ctx.exception.code, 2)
++                self.assertIn(f"invalid month: {text!r}, expected YYYY-MM", err.getvalue())
++                self.assertEqual(out.getvalue(), "")
++                self.assertFalse(path.exists())
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_report.py b/tests/test_report.py
+index fb92558..08d35d0 100644
+--- a/tests/test_report.py
++++ b/tests/test_report.py
+@@ -5,6 +5,7 @@ from expenses.models import Expense
+ from expenses.report import (
+     average_by_category,
+     expenses_between,
++    expenses_in_month,
+     monthly_total,
+     total,
+     total_by_category,
+@@ -77,6 +78,35 @@ class ReportTests(unittest.TestCase):
+         with self.assertRaisesRegex(ValueError, "start must not be after end"):
+             expenses_between(SAMPLE, date(2026, 10, 1), date(2026, 9, 1))
+ 
++    def test_expenses_in_month_only_that_month(self):
++        self.assertEqual(expenses_in_month(SAMPLE, 2026, 9), SAMPLE[0:4])
++        self.assertEqual(expenses_in_month(SAMPLE, 2026, 10), SAMPLE[4:6])
++
++    def test_expenses_in_month_does_not_mix_years(self):
++        self.assertEqual(expenses_in_month(SAMPLE, 2025, 9), [])
++
++    def test_expenses_in_month_excludes_neighbouring_days(self):
++        expenses = [
++            Expense(date(2026, 11, 30), "food", 1.00),
++            Expense(date(2026, 12, 1), "food", 2.00),
++            Expense(date(2026, 12, 31), "transport", 4.00),
++            Expense(date(2027, 1, 1), "food", 8.00),
++        ]
++        self.assertEqual(expenses_in_month(expenses, 2026, 12), expenses[1:3])
++
++    def test_expenses_in_month_keeps_input_order(self):
++        shuffled = [SAMPLE[3], SAMPLE[0], SAMPLE[5], SAMPLE[2]]
++        self.assertEqual(expenses_in_month(shuffled, 2026, 9), [SAMPLE[3], SAMPLE[0], SAMPLE[2]])
++
++    def test_expenses_in_month_of_nothing_is_empty(self):
++        self.assertEqual(expenses_in_month([], 2026, 9), [])
++
++    def test_expenses_in_month_rejects_bad_month(self):
++        for month in [0, 13]:
++            with self.subTest(month=month):
++                with self.assertRaisesRegex(ValueError, "month must be"):
++                    expenses_in_month(SAMPLE, 2026, month)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

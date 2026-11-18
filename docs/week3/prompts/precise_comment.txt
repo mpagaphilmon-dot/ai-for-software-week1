@@ -1,0 +1,9 @@
+# expenses_between(expenses, start, end) -> list of Expense
+# Data shape: `expenses` is a list of Expense records (expenses/models.py) whose
+#   `day` is a datetime.date; `start` and `end` are datetime.date objects, not strings.
+# Behavior: keep every expense with start <= e.day <= end. Both bounds are
+#   INCLUSIVE, so an expense dated exactly on `start` or `end` is kept. Return a
+#   new list in the same order as the input (do not sort); never modify the input.
+#   An empty input list returns [].
+# Failure mode: if start > end, raise ValueError("start must not be after end")
+#   instead of silently returning [], which would hide a swapped-argument bug.

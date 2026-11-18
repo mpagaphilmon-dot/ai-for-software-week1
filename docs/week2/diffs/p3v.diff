@@ -1,0 +1,103 @@
+diff -ruN -x __pycache__ -x handedit.csv -x r.csv orig/tests/test_cli.py run_p3v/tests/test_cli.py
+--- orig/tests/test_cli.py	1970-01-01 02:00:00.000000000 +0200
++++ run_p3v/tests/test_cli.py	2026-10-23 15:58:03.143340000 +0200
+@@ -0,0 +1,99 @@
++import io
++import tempfile
++import unittest
++from contextlib import redirect_stderr, redirect_stdout
++from datetime import date
++from pathlib import Path
++
++from expenses.cli import main
++from expenses.models import Expense
++from expenses.storage import append_expense, load_expenses
++
++
++def run(*argv):
++    """Run the CLI with `argv` and return (exit code, stdout)."""
++    out = io.StringIO()
++    with redirect_stdout(out):
++        code = main(list(argv))
++    return code, out.getvalue()
++
++
++class CliTests(unittest.TestCase):
++    def setUp(self):
++        tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(tmp.cleanup)
++        self.path = Path(tmp.name) / "expenses.csv"
++
++    def seed(self, *expenses):
++        for expense in expenses:
++            append_expense(self.path, expense)
++
++    def test_add_writes_expense(self):
++        code, out = run("--file", str(self.path), "add", "food", "12.5", "--note", "lunch", "--date", "2026-09-02")
++        self.assertEqual(code, 0)
++        self.assertEqual(out, "Added 12.50 to food\n")
++        self.assertEqual(load_expenses(self.path), [Expense(date(2026, 9, 2), "food", 12.5, "lunch")])
++
++    def test_add_normalises_category(self):
++        run("--file", str(self.path), "add", "  Food ", "3", "--date", "2026-09-02")
++        self.assertEqual(load_expenses(self.path)[0].category, "food")
++
++    def test_add_defaults_to_today(self):
++        run("--file", str(self.path), "add", "food", "3")
++        self.assertEqual(load_expenses(self.path)[0].day, date.today())
++
++    def test_list_prints_every_expense(self):
++        self.seed(
++            Expense(date(2026, 9, 2), "food", 12.5, "lunch"),
++            Expense(date(2026, 9, 3), "transport", 3.2),
++        )
++        code, out = run("--file", str(self.path), "list")
++        self.assertEqual(code, 0)
++        self.assertEqual(
++            out.splitlines(),
++            [
++                "2026-09-02  food             12.50  lunch",
++                "2026-09-03  transport         3.20  ",
++            ],
++        )
++
++    def test_list_of_missing_file_prints_nothing(self):
++        self.assertEqual(run("--file", str(self.path), "list"), (0, ""))
++
++    def test_summary_prints_totals_largest_first(self):
++        self.seed(
++            Expense(date(2026, 9, 2), "transport", 3.2),
++            Expense(date(2026, 9, 3), "food", 12.5),
++            Expense(date(2026, 10, 4), "food", 9.75),
++        )
++        code, out = run("--file", str(self.path), "summary")
++        self.assertEqual(code, 0)
++        self.assertEqual(
++            out.splitlines(),
++            [
++                "food             22.25",
++                "transport         3.20",
++                "total            25.45",
++            ],
++        )
++
++    def test_summary_of_missing_file_shows_zero_total(self):
++        self.assertEqual(run("--file", str(self.path), "summary"), (0, "total             0.00\n"))
++
++    def test_invalid_arguments_exit_with_usage_error(self):
++        cases = {
++            "no command": [],
++            "unknown command": ["delete"],
++            "amount not a number": ["add", "food", "lots"],
++            "bad date": ["add", "food", "3", "--date", "02/09/2026"],
++        }
++        for name, argv in cases.items():
++            with self.subTest(name), redirect_stderr(io.StringIO()):
++                with self.assertRaises(SystemExit) as ctx:
++                    run("--file", str(self.path), *argv)
++                self.assertEqual(ctx.exception.code, 2)
++        self.assertFalse(self.path.exists())
++
++
++if __name__ == "__main__":
++    unittest.main()

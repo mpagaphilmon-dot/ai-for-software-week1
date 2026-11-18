@@ -1,0 +1,123 @@
+# Week 6 verification log (run by me, 2026-11-13 14:50, Python 3.10.10)
+
+## a) RED: reviewed tests (agent tests + my tie test) against the code BEFORE implementation (copy at commit 99368bf)
+ImportError: Failed to import test module: tests.test_report
+ImportError: cannot import name 'expenses_in_month' from 'expenses.report' (C:\Users\Administrator\AppData\Local\Temp\claude\0d7e5d3920d35c51\b53a0749-f4b1-4ef8-b4bb-788ec4749b2b\scratchpad\w6\expenses\report.py)
+Ran 24 tests in 0.377s
+FAILED (failures=7, errors=10)
+561dc6f human metavar fix
+
+## b) GREEN: full suite in the real repo after accepting the change
+> python -m unittest
+Ran 41 tests in 0.398s
+
+OK
+
+## c) New tests by name
+test_month_defaults_to_current_month (tests.test_cli.CliTests) ... ok
+test_month_does_not_write_file (tests.test_cli.CliTests) ... ok
+test_month_excludes_neighbouring_months (tests.test_cli.CliTests) ... ok
+test_month_october (tests.test_cli.CliTests) ... ok
+test_month_on_missing_or_empty_file_prints_zero_total (tests.test_cli.CliTests) ... ok
+test_month_rejects_invalid_month (tests.test_cli.CliTests) ... ok
+test_month_shows_categories_largest_first_then_total (tests.test_cli.CliTests) ... ok
+test_month_ties_keep_first_appearance_order (tests.test_cli.CliTests) ... ok
+test_month_with_no_matches_prints_zero_total (tests.test_cli.CliTests) ... ok
+test_expenses_in_month_does_not_mix_years (tests.test_report.ReportTests) ... ok
+test_expenses_in_month_excludes_neighbouring_days (tests.test_report.ReportTests) ... ok
+test_expenses_in_month_keeps_input_order (tests.test_report.ReportTests) ... ok
+test_expenses_in_month_of_nothing_is_empty (tests.test_report.ReportTests) ... ok
+test_expenses_in_month_only_that_month (tests.test_report.ReportTests) ... ok
+test_expenses_in_month_rejects_bad_month (tests.test_report.ReportTests) ... ok
+test_monthly_total_does_not_mix_years (tests.test_report.ReportTests) ... ok
+test_monthly_total_only_counts_that_month (tests.test_report.ReportTests) ... ok
+
+## d) Manual runs (data/sample.csv, read-only)
+> python -m expenses --file data/sample.csv month 2026-09
+rent            650.00
+food             61.40
+transport         3.20
+total           714.60
+(exit 0)
+> python -m expenses --file data/sample.csv month 2026-10
+food              9.75
+transport         3.20
+total            12.95
+(exit 0)
+> python -m expenses --file data/sample.csv month 2025-09
+total             0.00
+(exit 0)
+> python -m expenses --file data/sample.csv month
+total             0.00
+(exit 0)
+> python -m expenses --file data/sample.csv month 2026-13
+usage: expenses month [-h] [YYYY-MM]
+expenses month: error: argument YYYY-MM: invalid month: '2026-13', expected YYYY-MM
+(exit 2)
+> python -m expenses --file data/sample.csv month 2026-9
+usage: expenses month [-h] [YYYY-MM]
+expenses month: error: argument YYYY-MM: invalid month: '2026-9', expected YYYY-MM
+(exit 2)
+> python -m expenses --file data/sample.csv month 202609
+usage: expenses month [-h] [YYYY-MM]
+expenses month: error: argument YYYY-MM: invalid month: '202609', expected YYYY-MM
+(exit 2)
+> python -m expenses --file data/sample.csv month 2026-09-15
+usage: expenses month [-h] [YYYY-MM]
+expenses month: error: argument YYYY-MM: invalid month: '2026-09-15', expected YYYY-MM
+(exit 2)
+> python -m expenses --file nope.csv month 2026-09
+total             0.00
+(exit 0)
+ls: cannot access 'nope.csv': No such file or directory
+> python -m expenses month -h
+usage: expenses month [-h] [YYYY-MM]
+
+positional arguments:
+  YYYY-MM     defaults to the current month
+
+options:
+  -h, --help  show this help message and exit
+> git status --short data/   (sample.csv untouched)
+(no output = unchanged)
+
+## e) Existing commands unchanged
+> summary
+rent            650.00
+food             71.15
+transport         6.40
+total           727.55
+> between 2026-09-03 2026-09-15
+2026-09-03  transport         3.20  bus
+2026-09-10  food             48.90  groceries
+2026-09-15  rent            650.00  
+total           702.10
+
+## f) Mutation checks (scratchpad mutate.py: break the code one way, run the suite, restore)
+KILLED   M1 total line sums every month
+           caught by test_month_defaults_to_current_month
+           caught by test_month_excludes_neighbouring_months
+           caught by test_month_october
+           caught by test_month_shows_categories_largest_first_then_total
+           caught by test_month_with_no_matches_prints_zero_total
+KILLED   M2 month filter ignores the year
+           caught by test_expenses_in_month_does_not_mix_years
+           caught by test_month_with_no_matches_prints_zero_total
+SURVIVED M3 shape check removed from year_month
+KILLED   M4 default month is always January
+           caught by test_month_defaults_to_current_month
+KILLED   M5 categories sorted alphabetically
+           caught by test_month_excludes_neighbouring_months
+           caught by test_month_shows_categories_largest_first_then_total
+           caught by test_month_ties_keep_first_appearance_order
+KILLED   M6 R8 month-range check removed
+           caught by test_expenses_in_month_rejects_bad_month
+KILLED   M7 category lines use every month
+           caught by test_month_defaults_to_current_month
+           caught by test_month_excludes_neighbouring_months
+           caught by test_month_october
+           caught by test_month_shows_categories_largest_first_then_total
+           caught by test_month_with_no_matches_prints_zero_total
+KILLED   M9 ties broken by name (largest first kept)
+           caught by test_month_ties_keep_first_appearance_order
+SURVIVED M8 isascii guard removed

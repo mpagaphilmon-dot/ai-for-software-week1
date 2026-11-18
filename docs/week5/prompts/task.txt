@@ -1,0 +1,1 @@
+Add a `between` command to the expense tracker CLI: `python -m expenses between 2026-09-03 2026-09-15` should list the expenses dated in that range and then print their total. Add tests for it.

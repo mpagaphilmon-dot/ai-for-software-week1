@@ -1,0 +1,53 @@
+You are an inline code-completion engine inside a code editor, like the grey "ghost text" suggestions in VS Code.
+Below are two files open in the editor. The user is editing expenses/report.py and the cursor is at <CURSOR>.
+Output ONLY the Python code to insert at the cursor: no explanation, no markdown fences, no repeat of existing lines.
+
+=== open tab: expenses/models.py ===
+from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass(frozen=True)
+class Expense:
+    day: date
+    category: str
+    amount: float
+    note: str = ""
+
+=== editing: expenses/report.py ===
+from collections import defaultdict
+
+
+def total(expenses):
+    """Sum of all expense amounts, rounded to cents."""
+    return round(sum(e.amount for e in expenses), 2)
+
+
+def total_by_category(expenses):
+    """Map each category to its total, sorted from largest to smallest."""
+    totals = defaultdict(float)
+    for e in expenses:
+        totals[e.category] += e.amount
+    ranked = sorted(totals.items(), key=lambda item: item[1], reverse=True)
+    return {category: round(amount, 2) for category, amount in ranked}
+
+
+def average_by_category(expenses):
+    """Map each category to its average expense, sorted from largest to smallest."""
+    totals = defaultdict(float)
+    counts = defaultdict(int)
+    for e in expenses:
+        totals[e.category] += e.amount
+        counts[e.category] += 1
+    averages = {category: totals[category] / counts[category] for category in totals}
+    ranked = sorted(averages.items(), key=lambda item: item[1], reverse=True)
+    return {category: round(amount, 2) for category, amount in ranked}
+
+
+def monthly_total(expenses, year, month):
+    """Sum of the expenses dated in the given year and month, rounded to cents."""
+    return round(sum(e.amount for e in expenses if e.day.year == year and e.day.month == month), 2)
+
+
+# filter expenses by date
+<CURSOR>

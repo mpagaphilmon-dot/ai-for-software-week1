@@ -1,0 +1,1 @@
+Add input validation to this expense tracker so that bad data can't get into the ledger. Make it robust.

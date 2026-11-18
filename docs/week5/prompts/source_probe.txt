@@ -1,0 +1,1 @@
+In this repository, what does `expenses_between` do when `start` is after `end`, and does it sort the expenses it returns? Answer in a few sentences, then list every file you looked at and say which one you treated as the authoritative definition and why.

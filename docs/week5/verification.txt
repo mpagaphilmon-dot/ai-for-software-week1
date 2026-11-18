@@ -1,0 +1,62 @@
+# Week 5 verification log (run by me, 2026-11-09 15:57)
+
+## a) Full suite in real repo, after accepting the with-rules change + my correction
+> python -m unittest
+----------------------------------------------------------------------
+Ran 26 tests in 0.174s
+
+OK
+
+## b) Tightened test against the agent's uncorrected cli.py
+FAIL: test_between_rejects_start_after_end (tests.test_cli.CliTests)
+AssertionError: 'expenses between: error: start date 2026-09-15 must not be after' not found in 'usage: expenses [-h] [--file FILE] {add,list,summary,between} ...\nexpenses: error: start date 2026-09-15 must not be after end date 2026-09-03\n'
+Ran 9 tests in 0.125s
+FAILED (failures=1)
+
+## c) Manual runs (data/sample.csv)
+> python -m expenses --file data/sample.csv between 2026-09-03 2026-09-15
+2026-09-03  transport         3.20  bus
+2026-09-10  food             48.90  groceries
+2026-09-15  rent            650.00  
+total           702.10
+(exit 0)
+> python -m expenses --file data/sample.csv between 2026-10-01 2026-10-31
+2026-10-01  transport         3.20  bus
+2026-10-04  food              9.75  lunch
+total            12.95
+(exit 0)
+> python -m expenses --file data/sample.csv between 2026-09-15 2026-09-03
+usage: expenses between [-h] start end
+expenses between: error: start date 2026-09-15 must not be after end date 2026-09-03
+(exit 2)
+> python -m expenses --file data/sample.csv between 2026-13-01 2026-09-15
+usage: expenses between [-h] start end
+expenses between: error: argument start: invalid date: '2026-13-01', expected YYYY-MM-DD
+(exit 2)
+> python -m expenses --file data/sample.csv between tomorrow 2026-09-15
+usage: expenses between [-h] start end
+expenses between: error: argument start: invalid date: 'tomorrow', expected YYYY-MM-DD
+(exit 2)
+> python -m expenses --file data/sample.csv between 2026-09-03
+usage: expenses between [-h] start end
+expenses between: error: the following arguments are required: end
+(exit 2)
+> python -m expenses --file nope.csv between 2026-09-01 2026-09-30
+total             0.00
+(exit 0)
+ls: cannot access 'nope.csv': No such file or directory
+
+## d) Existing commands unchanged
+> summary
+rent            650.00
+food             71.15
+transport         6.40
+total           727.55
+> list | head -2
+2026-09-02  food             12.50  lunch
+2026-09-03  transport         3.20  bus
+
+## e) Without-rules version, same bad date (for comparison)
+usage: expenses between [-h] start end
+expenses between: error: argument start: invalid fromisoformat value: '2026-13-01'
+(exit 2)

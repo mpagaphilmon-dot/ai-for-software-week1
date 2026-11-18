@@ -1,0 +1,8 @@
+If `start` is after `end`, `expenses_between` raises `ValueError("start must not be after end")`. It does not return an empty list; the comment above it says it raises so that a swapped-argument bug doesn't go unnoticed. It does **not** sort. It returns a new list of every expense with `start <= e.day <= end`, with both dates included, in the same order as the input, and it doesn't modify the input list. The code is at `expenses/report.py:44-48`.
+
+**Files I looked at:**
+- `expenses/report.py`: read in full.
+- `tests/test_report.py`: read in full. `test_expenses_between_rejects_start_after_end` (line 76) and `test_expenses_between_keeps_input_order` (line 61) confirm both answers.
+- Search results only, without opening the files: `docs/week3-checkpoint.md`, `docs/week3/vague_vs_tests.txt`, `docs/week3/accepted_tests.diff`, `docs/week3/accepted_report.diff`, `docs/week3/prompts/precise_comment.txt`, `docs/week3/prompts/precise_full.txt`, `docs/week3/outputs/precise_run1.py`, `precise_run2.py` and `vague_run2.py` (all in that `outputs` folder), `docs/week4/verification.txt`, and `docs/week4/outputs/1_original_plan.jsonl`.
+
+**Authoritative definition:** `expenses/report.py`. It is the module the tests import and the code that actually runs. The copies under `docs/` are write-ups, diffs and AI-generated drafts from earlier checkpoints. Some of them are deliberately wrong versions: `vague_vs_tests.txt` shows the "vague" drafts failing the start-after-end test and the keeps-order test. So the docs aren't a reliable source for current behaviour. I didn't run the tests myself. I based the answer on reading the code and the test file. `docs/week4/verification.txt` is a recorded earlier run that shows all five `expenses_between` tests passing.

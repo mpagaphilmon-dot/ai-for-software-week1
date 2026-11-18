@@ -1,0 +1,129 @@
+diff --git a/expenses/cli.py b/expenses/cli.py
+index 480d620..13e7c1a 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -3,7 +3,7 @@ import math
+ from datetime import date
+ 
+ from expenses.models import Expense
+-from expenses.report import total, total_by_category
++from expenses.report import expenses_between, total, total_by_category
+ from expenses.storage import append_expense, load_expenses
+ 
+ DEFAULT_FILE = "data/expenses.csv"
+@@ -38,11 +38,23 @@ def build_parser():
+ 
+     commands.add_parser("list", help="show every expense")
+     commands.add_parser("summary", help="show totals per category")
++
++    between = commands.add_parser("between", help="show expenses dated in a range (inclusive) and their total")
++    between.add_argument("start", type=date.fromisoformat, help="YYYY-MM-DD, inclusive")
++    between.add_argument("end", type=date.fromisoformat, help="YYYY-MM-DD, inclusive")
+     return parser
+ 
+ 
++def print_expense(e):
++    print(f"{e.day}  {e.category:<12} {e.amount:>9.2f}  {e.note}")
++
++
+ def main(argv=None):
+-    args = build_parser().parse_args(argv)
++    parser = build_parser()
++    args = parser.parse_args(argv)
++
++    if args.command == "between" and args.start > args.end:
++        parser.error("start must not be after end")
+ 
+     if args.command == "add":
+         expense = Expense(
+@@ -59,7 +71,14 @@ def main(argv=None):
+ 
+     if args.command == "list":
+         for e in expenses:
+-            print(f"{e.day}  {e.category:<12} {e.amount:>9.2f}  {e.note}")
++            print_expense(e)
++        return 0
++
++    if args.command == "between":
++        matching = expenses_between(expenses, args.start, args.end)
++        for e in matching:
++            print_expense(e)
++        print(f"{'total':<12} {total(matching):>9.2f}")
+         return 0
+ 
+     for category, amount in total_by_category(expenses).items():
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 77d060b..f871742 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -72,5 +72,70 @@ class CliTests(unittest.TestCase):
+                 self.assertFalse(path.exists())
+ 
+ 
++class BetweenTests(unittest.TestCase):
++    def setUp(self):
++        self._tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self._tmp.cleanup)
++        self.path = str(Path(self._tmp.name) / "expenses.csv")
++        for day, category, amount in [
++            ("2026-09-02", "food", "1.00"),    # day before the range
++            ("2026-09-03", "food", "10.25"),   # on start bound
++            ("2026-09-10", "travel", "4.50"),  # inside
++            ("2026-09-15", "rent", "20.00"),   # on end bound
++            ("2026-09-16", "food", "100.00"),  # day after the range
++        ]:
++            run(["--file", self.path, "add", category, amount, "--date", day])
++
++    def test_lists_inclusive_range_then_total(self):
++        code, out = run(["--file", self.path, "between", "2026-09-03", "2026-09-15"])
++        self.assertEqual(code, 0)
++        lines = out.splitlines()
++        self.assertEqual(len(lines), 4)
++        self.assertEqual([line.split()[0] for line in lines[:3]], ["2026-09-03", "2026-09-10", "2026-09-15"])
++        self.assertTrue(lines[-1].startswith("total"))
++        self.assertIn("34.75", lines[-1])
++        self.assertNotIn("2026-09-02", out)
++        self.assertNotIn("2026-09-16", out)
++
++    def test_single_day_range(self):
++        code, out = run(["--file", self.path, "between", "2026-09-10", "2026-09-10"])
++        self.assertEqual(code, 0)
++        lines = out.splitlines()
++        self.assertEqual(len(lines), 2)
++        self.assertIn("travel", lines[0])
++        self.assertIn("4.50", lines[-1])
++
++    def test_empty_range_prints_zero_total(self):
++        code, out = run(["--file", self.path, "between", "2026-10-01", "2026-10-31"])
++        self.assertEqual(code, 0)
++        lines = out.splitlines()
++        self.assertEqual(len(lines), 1)
++        self.assertTrue(lines[0].startswith("total"))
++        self.assertIn("0.00", lines[0])
++
++    def test_missing_file_prints_zero_total(self):
++        missing = str(Path(self._tmp.name) / "nope.csv")
++        code, out = run(["--file", missing, "between", "2026-09-03", "2026-09-15"])
++        self.assertEqual(code, 0)
++        self.assertEqual(len(out.splitlines()), 1)
++        self.assertIn("0.00", out)
++
++    def test_rejects_start_after_end(self):
++        err = io.StringIO()
++        with redirect_stderr(err), redirect_stdout(io.StringIO()):
++            with self.assertRaises(SystemExit) as ctx:
++                main(["--file", self.path, "between", "2026-09-15", "2026-09-03"])
++        self.assertEqual(ctx.exception.code, 2)
++        self.assertIn("start must not be after end", err.getvalue())
++
++    def test_rejects_invalid_dates(self):
++        for args in [["2026-13-01", "2026-09-15"], ["2026-09-03", "not-a-date"]]:
++            with self.subTest(args=args):
++                with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
++                    with self.assertRaises(SystemExit) as ctx:
++                        main(["--file", self.path, "between", *args])
++                self.assertEqual(ctx.exception.code, 2)
++
++
+ if __name__ == "__main__":
+     unittest.main()

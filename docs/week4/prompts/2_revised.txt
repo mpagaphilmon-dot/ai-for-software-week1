@@ -1,0 +1,16 @@
+Add input validation to the `add` command only, so bad input never reaches the CSV file.
+
+Scope:
+- You may change ONLY expenses/cli.py and tests/test_cli.py.
+- Do not modify models.py, storage.py, report.py or any other file, and do not create new files.
+- Do not change how existing CSV files are loaded, and do not change the list or summary commands.
+
+Rules for `add` (reject anything else):
+1. amount must be a finite number greater than 0. Reject 0, negatives, nan and inf.
+2. category must not be empty after stripping whitespace.
+Nothing else: no maximum amount, no length limits, no date rules.
+
+Failure behaviour: report the problem with argparse's normal error mechanism (message on stderr, exit code 2, the same as the existing non-numeric amount case) and write nothing to the file (it must not be created or changed).
+
+Tests: add one test per rule in tests/test_cli.py, each checking the exit code is 2 and the CSV file was not created. Keep the existing tests unchanged.
+Do not run anything that writes outside this repository.

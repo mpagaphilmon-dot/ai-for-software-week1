@@ -1,0 +1,65 @@
+Add input validation to the `add` command only, so bad input never reaches the CSV file.
+
+Scope:
+- You may change ONLY expenses/cli.py and tests/test_cli.py.
+- Do not modify models.py, storage.py, report.py or any other file, and do not create new files.
+- Do not change how existing CSV files are loaded, and do not change the list or summary commands.
+
+Rules for `add` (reject anything else):
+1. amount must be a finite number greater than 0. Reject 0, negatives, nan and inf.
+2. category must not be empty after stripping whitespace.
+Nothing else: no maximum amount, no length limits, no date rules.
+
+Failure behaviour: report the problem with argparse's normal error mechanism (message on stderr, exit code 2, the same as the existing non-numeric amount case) and write nothing to the file (it must not be created or changed).
+
+Tests: add one test per rule in tests/test_cli.py, each checking the exit code is 2 and the CSV file was not created. Keep the existing tests unchanged.
+Do not run anything that writes outside this repository.
+
+The plan below has been reviewed and approved. Implement exactly this plan, nothing more:
+
+# Plan: input validation for `expenses add`
+
+## Context
+`add` currently accepts any float (0, negatives, `nan`, `inf`) and any category string (including blank), and writes them straight to the CSV via `append_expense`. Goal: reject bad input at the argparse layer so it never reaches storage, using argparse's normal error path (stderr message, exit 2), the same path as the existing non-numeric amount case.
+
+Scope: only `expenses/cli.py` and `tests/test_cli.py`. No changes to models/storage/report, list/summary, or CSV loading.
+
+## Approach: argparse `type=` validators in `expenses/cli.py`
+Do validation inside argparse type functions. When one raises `argparse.ArgumentTypeError`, argparse prints `usage... error: argument amount: <msg>` to stderr and calls `sys.exit(2)` during `parse_args`, so `main` never gets to `append_expense` and the file is never created or touched. This is how `type=float` already rejects `abc`.
+
+Add two module-level helpers (plus `import math`):
+
+```python
+def positive_amount(text):
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid amount: {text!r}")
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError(f"amount must be a finite number greater than 0, got {text!r}")
+    return value
+
+
+def non_empty_category(text):
+    if not text.strip():
+        raise argparse.ArgumentTypeError("category must not be empty")
+    return text
+```
+
+Wire them up in `build_parser`:
+- `add.add_argument("category", type=non_empty_category)`
+- `add.add_argument("amount", type=positive_amount)`
+
+`non_empty_category` returns the text unchanged, so the existing `.strip().lower()` normalisation in `main` keeps working as before. Non-numeric amounts still exit 2 (now with a clearer message), so `test_add_rejects_non_numeric_amount` still passes. `math.isfinite` covers `nan`, `inf`, and overflow such as `1e309`. `-5` is parsed as a positional argument because the `add` subparser has no options that look like negative numbers, so it reaches the validator.
+
+## Tests in `tests/test_cli.py` (existing tests unchanged)
+Add two tests that follow the pattern of `test_add_rejects_non_numeric_amount`: a temp dir, stderr/stdout redirected, `assertRaises(SystemExit)`, then check `code == 2` and `assertFalse(path.exists())`.
+
+1. `test_add_rejects_non_positive_or_non_finite_amount`: `subTest` over `"0"`, `"-5"`, `"nan"`, `"inf"`.
+2. `test_add_rejects_blank_category`: `subTest` over `""` and `"   "`.
+
+Each subTest uses its own fresh temp dir/path, so "not created" is checked separately for every input.
+
+## Verification
+- `python -m unittest discover -s tests -v` from the repo root. Tests use temp dirs only, so nothing is written outside the repo apart from the OS temp cleanup tempfile already does in the existing tests.
+- Read-only manual spot check: `python -m expenses --file <scratch path> add Food 0` should print an argparse error and exit 2, with no file created. Use a path inside the repo that is removed afterwards, or skip this and rely on the tests.

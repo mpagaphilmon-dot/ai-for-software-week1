@@ -1,0 +1,21 @@
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 3f378ee..c13570c 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -203,6 +203,16 @@ class CliTests(unittest.TestCase):
+                 [line("transport", 4), line("food", 2), line("total", 6)],
+             )
+ 
++    def test_month_ties_keep_first_appearance_order(self):
++        # Added in human review: the spec's tie rule had no test. Alphabetical
++        # order would put food first, so this catches a tie-break by name.
++        with tempfile.TemporaryDirectory() as tmp:
++            path = str(Path(tmp) / "expenses.csv")
++            add_rows(path, [("2026-09-01", "transport", "5"), ("2026-09-02", "food", "5")])
++            code, out = run(["--file", path, "month", "2026-09"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), [line("transport", 5), line("food", 5), line("total", 10)])
++
+     def test_month_defaults_to_current_month(self):
+         with tempfile.TemporaryDirectory() as tmp:
+             path = str(Path(tmp) / "expenses.csv")

@@ -1,0 +1,23 @@
+Intent: the `summary` command shows a total per category. I want a helper that gives the average amount per expense in each category, so I can show it next to the totals later. Only the helper and its tests for now; no CLI change yet.
+
+Context: expenses/report.py already has total(), total_by_category() and monthly_total(). Each takes a list of Expense records (expenses/models.py: day, category, amount, note). Categories are already lowercased when they are loaded. Every existing function rounds money to cents with round(x, 2), and total_by_category returns a dict sorted from largest to smallest.
+
+Task: add average_by_category(expenses) to expenses/report.py.
+
+Example (the rows in data/sample.csv):
+  food: 12.50, 48.90, 9.75   -> 71.15 / 3 = 23.7166... -> 23.72
+  transport: 3.20, 3.20      -> 3.2
+  rent: 650.00               -> 650.0
+  average_by_category(...) == {"rent": 650.0, "food": 23.72, "transport": 3.2}   (this order)
+
+Constraints:
+- Standard library only. Python 3.10.
+- Do not change the existing functions, cli.py, storage.py or models.py.
+- Same style as total_by_category: one-line docstring, rounded to cents, sorted largest average first.
+- An empty list returns {} (no ZeroDivisionError).
+
+Definition of done:
+- The function exists in expenses/report.py.
+- tests/test_report.py has two new tests: the example above, and empty input -> {}.
+- `python -m unittest` passes (run it).
+- Reply with the diff and the test output, nothing else.

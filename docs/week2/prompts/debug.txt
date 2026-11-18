@@ -1,0 +1,26 @@
+Bug: after I hand-edit my expenses file and then run `add`, the new expense disappears.
+
+Steps (the file is handedit.csv in this folder; my editor saved it with no newline after the last line):
+  date,category,amount,note
+  2026-09-02,food,12.50,lunch
+
+  $ python -m expenses --file handedit.csv add food 5 --note snack
+  Added 5.00 to food
+  $ python -m expenses --file handedit.csv summary
+  food             12.50
+  total            12.50
+
+Expected: food 17.50, because the add command said it worked.
+
+My hypothesis: append_expense is not actually writing the row. Maybe the file is opened in the wrong mode, or the write is not flushed before the program exits.
+
+Relevant code: expenses/storage.py (append_expense and load_expenses).
+
+Please test my hypothesis against the code BEFORE fixing anything: reproduce the bug, look at the actual bytes in the file, and tell me whether my hypothesis is right or wrong, with the evidence. If it is wrong, find the real cause.
+
+Then fix it:
+- Smallest change, in expenses/storage.py only, standard library only.
+- Normal files (ending in a newline) must be written exactly as before.
+- Add a regression test to tests/test_storage.py.
+
+Done = `python -m unittest` passes. Reply with: verdict on my hypothesis, evidence, root cause, the diff, and the test output.

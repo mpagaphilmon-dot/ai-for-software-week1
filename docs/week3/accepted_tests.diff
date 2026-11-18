@@ -1,0 +1,51 @@
+diff --git a/docs/week3/test_report_before.py b/tests/test_report.py
+index e5887a3..fb92558 100644
+--- a/docs/week3/test_report_before.py
++++ b/tests/test_report.py
+@@ -2,7 +2,13 @@ import unittest
+ from datetime import date
+ 
+ from expenses.models import Expense
+-from expenses.report import average_by_category, monthly_total, total, total_by_category
++from expenses.report import (
++    average_by_category,
++    expenses_between,
++    monthly_total,
++    total,
++    total_by_category,
++)
+ 
+ EXPENSES = [
+     Expense(date(2026, 9, 2), "food", 12.50),
+@@ -46,6 +52,31 @@ class ReportTests(unittest.TestCase):
+     def test_average_by_category_of_nothing_is_empty(self):
+         self.assertEqual(average_by_category([]), {})
+ 
++    def test_expenses_between_includes_both_bounds(self):
++        self.assertEqual(
++            expenses_between(SAMPLE, date(2026, 9, 3), date(2026, 9, 15)),
++            SAMPLE[1:4],
++        )
++
++    def test_expenses_between_keeps_input_order(self):
++        shuffled = [SAMPLE[5], SAMPLE[0], SAMPLE[4]]
++        self.assertEqual(
++            expenses_between(shuffled, date(2026, 9, 1), date(2026, 10, 31)),
++            shuffled,
++        )
++
++    def test_expenses_between_does_not_modify_input(self):
++        expenses = list(SAMPLE)
++        expenses_between(expenses, date(2026, 10, 1), date(2026, 10, 1))
++        self.assertEqual(expenses, SAMPLE)
++
++    def test_expenses_between_of_nothing_is_empty(self):
++        self.assertEqual(expenses_between([], date(2026, 9, 1), date(2026, 9, 30)), [])
++
++    def test_expenses_between_rejects_start_after_end(self):
++        with self.assertRaisesRegex(ValueError, "start must not be after end"):
++            expenses_between(SAMPLE, date(2026, 10, 1), date(2026, 9, 1))
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

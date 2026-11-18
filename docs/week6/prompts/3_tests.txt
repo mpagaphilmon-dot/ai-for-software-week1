@@ -1,0 +1,122 @@
+Write the TESTS ONLY for the `month` feature described below. Do not change anything in expenses/ or README.md: the feature is not implemented yet, so the new tests are expected to fail (or error on import) when you run them. Edit only tests/test_report.py and tests/test_cli.py, following CLAUDE.md and the existing test style. Run `python -m unittest` once at the end and report which tests fail and why (expected: because the feature is missing).
+
+--- SPEC ---
+# Spec v2: `month` command
+
+## User goal
+"What did I spend this month, and where did it go?" Show one calendar month's spending, split by category, with the month total. With no argument it shows the current month.
+
+## Input
+```
+python -m expenses [--file FILE] month [YYYY-MM]
+```
+- `YYYY-MM`: four-digit year, two-digit month 01–12 (e.g. `2026-09`). Optional; defaults to the month of today's date.
+
+## Output (stdout)
+- One line per category that has at least one expense dated in that month, formatted `f"{category:<12} {amount:>9.2f}"`, largest total first. Ties keep the order of first appearance in the file (the same order `summary` uses).
+- Last line: `f"{'total':<12} {t:>9.2f}"`.
+- No heading and no per-expense lines.
+
+## Requirements (EARS)
+- **R1** When the user runs `month YYYY-MM`, the system shall print one category line for each category with expenses dated from the 1st to the last day of that month inclusive, ordered by total, largest first, and exit 0.
+- **R2** When the user runs `month YYYY-MM`, the system shall print as its last line the month total, rounded to 2 decimals.
+- **R3** When the user runs `month` with no argument, the system shall behave as if given the current year and month.
+- **R4** If the argument is not exactly a valid `YYYY-MM` month, then the system shall exit with code 2, print `invalid month: '<text>', expected YYYY-MM` on stderr, and print nothing on stdout.
+- **R5** If no expenses are dated in that month (including a missing or empty file), then the system shall print only `total 0.00` (formatted as above) and exit 0.
+- **R6** The system shall not count expenses from the same month of a different year, or from the neighbouring days of the previous or next month.
+- **R7** The `month` command shall not write to the CSV file.
+- **R8** *(added after plan review)* If `expenses_in_month` is called with a month outside 1–12, then it shall raise `ValueError` rather than return an empty list.
+
+## Constraints
+- Standard library only; follow `CLAUDE.md` (module jobs, argparse `type=` validation, `unittest`).
+- **Selecting a month's expenses is a calculation, so it belongs in `report.py`:** add `expenses_in_month(expenses, year, month)` (pure, keeps input order) with its own report tests. `cli.py` must not compute month boundaries or filter by itself.
+- Category lines come from `total_by_category(<month's expenses>)`; the total line comes from `monthly_total(expenses, year, month)`.
+- Validation is a `year_month` argparse type function returning `(year, month)`.
+- Add one usage line to `README.md`.
+
+## Acceptance criteria (with `data/sample.csv` data rebuilt in a temp file)
+| Command | Expected stdout | Exit |
+| --- | --- | --- |
+| `month 2026-09` | `rent 650.00` / `food 61.40` / `transport 3.20` / `total 714.60` (in this order) | 0 |
+| `month 2026-10` | `food 9.75` / `transport 3.20` / `total 12.95` | 0 |
+| `month 2025-09` | `total 0.00` only | 0 |
+| `month` (an expense added for today) | that expense's category and amount, and the total | 0 |
+| `month 2026-13`, `2026-00`, `2026-9`, `2026-09-15`, `abc` | nothing; stderr has `invalid month` | 2 |
+| Dec/Jan: expenses on 2026-11-30, 2026-12-01, 2026-12-31, 2027-01-01; `month 2026-12` | only the two December expenses | 0 |
+
+## Out of scope (do not build)
+- Percentages, averages, budgets, charts, per-expense listing, filtering to one category.
+- Multiple months, year summaries, comparing months, `--sort`, JSON/CSV output, currency symbols.
+- Changing `add`, `list`, `summary`, `between` or refactoring their shared print code; changing `monthly_total`.
+- Handling malformed CSV rows; editing `data/`, `docs/`; new dependencies.
+- Making category lines add up exactly to the total (each is rounded separately; a 1-cent difference is accepted).
+
+--- APPROVED PLAN (tests section applies) ---
+# Implementation plan: `month` command
+
+I read `expenses/*.py`, `tests/*.py`, `README.md` and `data/sample.csv`. I did not change any files. I tried to run a short Python check of how `date.fromisoformat` handles odd inputs, but that command wasn't approved, so risk 1 below rests on what I know rather than a test run.
+
+## Changes, in order
+
+**1. `expenses/report.py`**: add a new function below `monthly_total` (line 32) and above the `expenses_between` comment block. Leave `monthly_total` unchanged.
+```python
+def expenses_in_month(expenses, year, month):
+    """Expenses dated in the given year and month, in their original order (no rounding)."""
+    if not 1 <= month <= 12:
+        raise ValueError("month must be from 1 to 12")
+    return [e for e in expenses if e.day.year == year and e.day.month == month]
+```
+Matching on `year` and `month` avoids working out the last day of the month, which would need `calendar`, a module CLAUDE.md §7 doesn't list. The `ValueError` follows CLAUDE.md §4 (see risk 3).
+
+**2. `expenses/cli.py`**
+- Change line 6 to also import `expenses_in_month` and `monthly_total`.
+- Add `year_month(text)` after `iso_date` (line 32). Base it on CLAUDE.md §6, which returns `(year, month)` and raises `ArgumentTypeError(f"invalid month: {text!r}, expected YYYY-MM")`. Add a shape check before `fromisoformat`: `len(text) == 7 and text[4] == "-" and text.isascii()`, with the year and month parts both digits (see risk 1).
+- In `build_parser`, after the `between` block and before `return parser`:
+  `month = commands.add_parser("month", help="show one month's totals per category, then the month total")`
+  `month.add_argument("month", nargs="?", type=year_month, default=None, help="YYYY-MM, defaults to the current month")`
+- In `main`, add a `month` branch after the `between` branch (line 87) and before the summary code. Use a new variable name such as `selected`, because the name `month` already holds the subparser and the argument:
+  ```python
+  if args.command == "month":
+      year, month = args.month or (date.today().year, date.today().month)
+      for category, amount in total_by_category(expenses_in_month(expenses, year, month)).items():
+          print(f"{category:<12} {amount:>9.2f}")
+      print(f"{'total':<12} {monthly_total(expenses, year, month):>9.2f}")
+      return 0
+  ```
+  Call `date.today()` once and store it, so a run at midnight can't mix two dates. `storage.py` already lower-cases categories, and the branch never writes (R7).
+
+**3. `README.md`**: add `python -m expenses month 2026-09` to `## Usage`, after the `between` line.
+
+## Tests to add
+
+**`tests/test_report.py`** (add `expenses_in_month` to the import):
+- `test_expenses_in_month_only_that_month`: on `SAMPLE`, (2026, 9) returns `SAMPLE[0:4]` and (2026, 10) returns `SAMPLE[4:6]`.
+- `test_expenses_in_month_does_not_mix_years`: on `SAMPLE`, (2025, 9) returns `[]`.
+- `test_expenses_in_month_excludes_neighbouring_days`: from expenses on 11-30, 12-01, 12-31 and 2027-01-01, (2026, 12) keeps only the two December ones.
+- `test_expenses_in_month_keeps_input_order`: a shuffled list keeps its order.
+- `test_expenses_in_month_rejects_bad_month`: `assertRaisesRegex(ValueError, "month must be")` for 0 and 13.
+
+**`tests/test_cli.py`**: each test uses `run()`, `TemporaryDirectory` and `--file`. The sample data is rebuilt with `add ... --date`, as in the `between` tests.
+- `test_month_shows_categories_largest_first_then_total`: for `2026-09`, the output is exactly the four formatted lines rent 650.00, food 61.40, transport 3.20, total 714.60, with exit 0.
+- `test_month_october`: food 9.75, transport 3.20, total 12.95.
+- `test_month_with_no_matches_prints_zero_total`: on the sample data, `2025-09` gives `[f"{'total':<12} {0:>9.2f}"]`. Run it again on a missing file for the same result.
+- `test_month_excludes_neighbouring_months`: the Dec/Jan acceptance case. Only the two December amounts and their total appear.
+- `test_month_defaults_to_current_month`: `add food 7` with no `--date`, then `month` with no argument, prints a food 7.00 line and a total 7.00 line.
+- `test_month_does_not_write_file`: the file's bytes are the same before and after `month 2026-09`.
+- `test_month_rejects_invalid_month`: run subtests for `2026-13`, `2026-00`, `2026-9`, `2026-09-15` and `abc`. Each must give exit 2, `"invalid month"` on stderr and empty stdout.
+
+Run `python -m unittest` at the end. All tests must pass.
+
+## Spec problems and risks
+
+1. **The `year_month` example in CLAUDE.md is too permissive for R4.** It checks `date.fromisoformat(f"{text}-01")`, and on Python 3.11+ `fromisoformat` accepts more ISO formats than `YYYY-MM-DD`. Inputs like `202609` might get through, and I couldn't run a check to rule it out. The shape check in step 2 closes this, and it should get a few extra subtest cases.
+2. **Two separate filters.** The total comes from `monthly_total` and the category lines from `expenses_in_month`, so the month selection is written twice. The spec requires this and forbids changing `monthly_total`. The acceptance tests are what keep the two in agreement.
+3. **The month check in `expenses_in_month` isn't in the spec.** CLAUDE.md §4 says not to return an empty result for bad arguments, so I added the 1–12 check. It is the only addition beyond the spec. Drop it, and its test, if you want the spec followed strictly.
+4. **R5 is loosely worded.** It says "print only `total 0.00`", but the real line is padded (`total` then spaces, then `0.00`). The tests should compare against the formatted string, not the literal text in the spec.
+5. **The "today" test could rarely fail.** If it runs across midnight at the end of a month, the added expense and the `month` call can land in different months. This is accepted as unlikely.
+6. **Ties are already handled.** `total_by_category` uses a stable sort on insertion order, which gives first-appearance order, so the tie rule needs no new code.
+--- REVIEWER AMENDMENTS (override the plan) ---
+- **A.** Rejection subtests must also include `202609` and the empty string `""`, so the shape check is actually exercised.
+- **B.** At least one rejection test asserts the **full** message `invalid month: '2026-13', expected YYYY-MM`, not just `invalid month`. A substring test would also pass for an unrelated message such as "invalid month range".
+- **C.** The October CLI test must check the **order** of lines (food before transport), not just their presence.
+- **D.** Name the subparser variable `month_cmd`, not `month`, in `build_parser` so it isn't confused with the argument of the same name in `main`.

@@ -1,0 +1,231 @@
+diff --git a/README.md b/README.md
+index db7c5b5..3365a41 100644
+--- a/README.md
++++ b/README.md
+@@ -10,6 +10,7 @@ python -m expenses list
+ python -m expenses summary
+ python -m expenses between 2026-09-03 2026-09-15
+ python -m expenses month 2026-09
++python -m expenses undo
+ python -m expenses --file data/sample.csv summary
+ ```
+ 
+diff --git a/expenses/cli.py b/expenses/cli.py
+index d826bba..df78f4a 100644
+--- a/expenses/cli.py
++++ b/expenses/cli.py
+@@ -4,7 +4,7 @@ from datetime import date
+ 
+ from expenses.models import Expense
+ from expenses.report import expenses_between, expenses_in_month, monthly_total, total, total_by_category
+-from expenses.storage import append_expense, load_expenses
++from expenses.storage import append_expense, load_expenses, remove_last_expense
+ 
+ DEFAULT_FILE = "data/expenses.csv"
+ 
+@@ -57,6 +57,7 @@ def build_parser():
+ 
+     commands.add_parser("list", help="show every expense")
+     commands.add_parser("summary", help="show totals per category")
++    commands.add_parser("undo", help="remove the most recently added expense")
+ 
+     between = commands.add_parser("between", help="show expenses from START to END inclusive, then their total")
+     between.add_argument("start", type=iso_date, help="YYYY-MM-DD")
+@@ -87,6 +88,14 @@ def main(argv=None):
+         print(f"Added {expense.amount:.2f} to {expense.category}")
+         return 0
+ 
++    if args.command == "undo":
++        expense = remove_last_expense(args.file)
++        if expense is None:
++            print("Nothing to undo")
++        else:
++            print(f"Removed {expense.amount:.2f} from {expense.category} ({expense.day})")
++        return 0
++
+     expenses = load_expenses(args.file)
+ 
+     if args.command == "list":
+diff --git a/expenses/storage.py b/expenses/storage.py
+index 486dd4b..7761077 100644
+--- a/expenses/storage.py
++++ b/expenses/storage.py
+@@ -30,6 +30,46 @@ def load_expenses(path):
+     return expenses
+ 
+ 
++def remove_last_expense(path):
++    """Remove the last expense row from the CSV file and return it.
++
++    Returns None, leaving the file untouched, when there is no expense to remove.
++    Every other byte of the file is kept as it was.
++    """
++    path = Path(path)
++    expenses = load_expenses(path)
++    if not expenses:
++        return None
++
++    with path.open(newline="", encoding="utf-8") as f:
++        lines = f.readlines()
++
++    # A quoted note can span several lines, so let csv find where the last
++    # record starts instead of just dropping the last line.
++    consumed = []
++
++    def feed():
++        for text in lines:
++            consumed.append(text)
++            yield text
++
++    start = last_start = 0
++    for row in csv.reader(feed()):
++        if row:
++            last_start = start
++        start = len(consumed)
++
++    # Write to a sibling file and swap it in, so a failed write can't
++    # truncate the ledger; replace() is atomic on the same filesystem.
++    tmp = path.with_name(path.name + ".tmp")
++    try:
++        tmp.write_text("".join(lines[:last_start]), encoding="utf-8", newline="")
++        tmp.replace(path)
++    finally:
++        tmp.unlink(missing_ok=True)
++    return expenses[-1]
++
++
+ def append_expense(path, expense):
+     """Add one expense to the CSV file, creating it with a header if needed."""
+     path = Path(path)
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index c13570c..7a4507b 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -233,6 +233,44 @@ class CliTests(unittest.TestCase):
+             self.assertEqual(code, 0)
+             self.assertEqual(path.read_bytes(), before)
+ 
++    def test_undo_removes_last_added_expense(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            add_rows(str(path), SAMPLE_ROWS[:2])
++            run(["--file", str(path), "add", "Food", "12.5", "--date", "2026-09-04"])
++            code, out = run(["--file", str(path), "undo"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), ["Removed 12.50 from food (2026-09-04)"])
++            self.assertEqual(
++                [(str(e.day), e.category, f"{e.amount:.2f}") for e in load_expenses(path)],
++                SAMPLE_ROWS[:2],
++            )
++
++    def test_undo_until_empty_then_nothing_to_undo(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            add_rows(str(path), SAMPLE_ROWS[:1])
++            code, out = run(["--file", str(path), "undo"])
++            self.assertEqual(out.splitlines(), ["Removed 12.50 from food (2026-09-02)"])
++            before = path.read_bytes()
++            code, out = run(["--file", str(path), "undo"])
++            self.assertEqual(code, 0)
++            self.assertEqual(out.splitlines(), ["Nothing to undo"])
++            self.assertEqual(path.read_bytes(), before)
++
++    def test_undo_on_missing_or_empty_file(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            missing = Path(tmp) / "missing.csv"
++            empty = Path(tmp) / "empty.csv"
++            empty.write_text("", encoding="utf-8")
++            for path in [missing, empty]:
++                with self.subTest(path=path.name):
++                    code, out = run(["--file", str(path), "undo"])
++                    self.assertEqual(code, 0)
++                    self.assertEqual(out.splitlines(), ["Nothing to undo"])
++            self.assertFalse(missing.exists())
++            self.assertEqual(empty.read_bytes(), b"")
++
+     def test_month_rejects_invalid_month(self):
+         for text in ["2026-13", "2026-00", "2026-9", "2026-09-15", "abc", "202609", ""]:
+             with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
+diff --git a/tests/test_storage.py b/tests/test_storage.py
+index b4fa0f3..6602246 100644
+--- a/tests/test_storage.py
++++ b/tests/test_storage.py
+@@ -2,9 +2,10 @@ import tempfile
+ import unittest
+ from datetime import date
+ from pathlib import Path
++from unittest import mock
+ 
+ from expenses.models import Expense
+-from expenses.storage import append_expense, load_expenses
++from expenses.storage import append_expense, load_expenses, remove_last_expense
+ 
+ 
+ class StorageTests(unittest.TestCase):
+@@ -48,6 +49,66 @@ class StorageTests(unittest.TestCase):
+                 path.read_bytes(), original + b"2026-09-03,food,5.00,snack\r\n"
+             )
+ 
++    def test_remove_last_returns_it_and_keeps_other_bytes(self):
++        # LF endings, as in data/sample.csv: the kept rows must not be rewritten.
++        kept = b"date,category,amount,note\n2026-09-02,food,12.50,lunch\n"
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            path.write_bytes(kept + b"2026-09-03,Transport,3.20,bus\n")
++            removed = remove_last_expense(path)
++            self.assertEqual(removed, Expense(date(2026, 9, 3), "transport", 3.2, "bus"))
++            self.assertEqual(path.read_bytes(), kept)
++
++    def test_remove_last_without_trailing_newline(self):
++        kept = b"date,category,amount,note\r\n2026-09-02,food,12.50,lunch\r\n"
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            path.write_bytes(kept + b"2026-09-03,food,5.00,snack")
++            self.assertEqual(remove_last_expense(path).note, "snack")
++            self.assertEqual(path.read_bytes(), kept)
++
++    def test_remove_last_with_multiline_note(self):
++        first = Expense(date(2026, 9, 2), "food", 12.5, "lunch")
++        last = Expense(date(2026, 9, 3), "food", 5.0, "two\nlines")
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            append_expense(path, first)
++            append_expense(path, last)
++            self.assertEqual(remove_last_expense(path), last)
++            self.assertEqual(load_expenses(path), [first])
++
++    def test_remove_last_failed_write_keeps_file(self):
++        original = (
++            b"date,category,amount,note\r\n"
++            b"2026-09-02,food,12.50,lunch\r\n"
++            b"2026-09-03,food,5.00,snack\r\n"
++        )
++
++        def failing_write_text(self, *args, **kwargs):
++            self.write_bytes(b"")  # truncated, as open(..., "w") does
++            raise OSError("disk full")
++
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            path.write_bytes(original)
++            with mock.patch.object(Path, "write_text", failing_write_text):
++                with self.assertRaises(OSError):
++                    remove_last_expense(path)
++            self.assertEqual(path.read_bytes(), original)
++            self.assertEqual(list(Path(tmp).iterdir()), [path])
++
++    def test_remove_last_with_nothing_to_remove(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            missing = Path(tmp) / "missing.csv"
++            self.assertIsNone(remove_last_expense(missing))
++            self.assertFalse(missing.exists())
++            for content in [b"", b"date,category,amount,note\r\n"]:
++                with self.subTest(content=content):
++                    path = Path(tmp) / "expenses.csv"
++                    path.write_bytes(content)
++                    self.assertIsNone(remove_last_expense(path))
++                    self.assertEqual(path.read_bytes(), content)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

@@ -1,0 +1,39 @@
+$ (copy of data/sample.csv) undo
+Removed 9.75 from food (2026-10-04)
+exit 0
+$ list
+2026-09-02  food             12.50  lunch
+2026-09-03  transport         3.20  bus
+2026-09-10  food             48.90  groceries
+2026-09-15  rent            650.00  
+2026-10-01  transport         3.20  bus
+$ add food 4.20 --note "coffee, large"  then undo
+Added 4.20 to food
+Removed 4.20 from food (2026-11-18)
+$ diff against original minus last row
+identical (LF endings kept)
+$ undo x5 then once more
+Removed 3.20 from transport (2026-10-01)
+Removed 650.00 from rent (2026-09-15)
+Removed 48.90 from food (2026-09-10)
+Removed 3.20 from transport (2026-09-03)
+Removed 12.50 from food (2026-09-02)
+Nothing to undo
+exit 0
+file now: date,category,amount,note
+$ undo on missing file
+Nothing to undo
+exit 0; created: no
+$ undo --help
+usage: expenses undo [-h]
+
+options:
+  -h, --help  show this help message and exit
+$ undo extra-arg
+usage: expenses [-h] [--file FILE] {add,list,summary,undo,between,month} ...
+expenses: error: unrecognized arguments: 3
+exit 2
+$ ls temp dir (no .tmp left)
+s.csv
+$ git status --short data/
+(empty = data/ untouched)

@@ -1,0 +1,7 @@
+Code review finding on `remove_last_expense` in expenses/storage.py (the new `undo` command):
+
+It rewrites the ledger in place with `path.write_text(...)`. That truncates the file first and then writes, so if the write fails partway (disk full, Ctrl-C, file locked by antivirus or a sync client) the user's whole ledger is lost, not just the last row. Reproduced: with open(..., "w") failing on its first write, `undo` on a 2-row file left 0 rows.
+
+Fix it with the smallest change that makes the rewrite all-or-nothing: write the kept bytes to a temporary file next to the ledger, then replace the ledger with it (`Path.replace`, atomic on the same filesystem). Use pathlib only; CLAUDE.md section 7 does not list `os`, `tempfile` or `shutil`. Do not change the function's behaviour on success, its return value, the CLI, or any other function.
+
+Add one regression test in tests/test_storage.py that makes the write fail and asserts the original file is byte-for-byte unchanged. Run `python -m unittest`; all tests must pass. Reply with the diff summary only.

@@ -1,0 +1,3 @@
+Add an `undo` command to the expense tracker: `python -m expenses [--file FILE] undo` removes the most recently added expense (the last row of the CSV file) and prints what it removed, e.g. `Removed 12.50 from food (2026-09-02)`. If there is nothing to undo it should say so and not change the file.
+
+Follow CLAUDE.md. Add tests for the new behaviour and a README usage line. Run `python -m unittest` at the end; all tests must pass. When you are done, write a short PR description (what changed, how it was tested).

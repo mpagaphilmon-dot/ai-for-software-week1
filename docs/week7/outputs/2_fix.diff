@@ -1,0 +1,65 @@
+diff --git a/expenses/__pycache__/storage.cpython-310.pyc b/expenses/__pycache__/storage.cpython-310.pyc
+index 4e43748..a11586d 100644
+Binary files a/expenses/__pycache__/storage.cpython-310.pyc and b/expenses/__pycache__/storage.cpython-310.pyc differ
+diff --git a/expenses/storage.py b/expenses/storage.py
+index a5993df..7761077 100644
+--- a/expenses/storage.py
++++ b/expenses/storage.py
+@@ -59,7 +59,14 @@ def remove_last_expense(path):
+             last_start = start
+         start = len(consumed)
+ 
+-    path.write_text("".join(lines[:last_start]), encoding="utf-8", newline="")
++    # Write to a sibling file and swap it in, so a failed write can't
++    # truncate the ledger; replace() is atomic on the same filesystem.
++    tmp = path.with_name(path.name + ".tmp")
++    try:
++        tmp.write_text("".join(lines[:last_start]), encoding="utf-8", newline="")
++        tmp.replace(path)
++    finally:
++        tmp.unlink(missing_ok=True)
+     return expenses[-1]
+ 
+ 
+diff --git a/tests/__pycache__/test_storage.cpython-310.pyc b/tests/__pycache__/test_storage.cpython-310.pyc
+index aa8c48b..fac1a55 100644
+Binary files a/tests/__pycache__/test_storage.cpython-310.pyc and b/tests/__pycache__/test_storage.cpython-310.pyc differ
+diff --git a/tests/test_storage.py b/tests/test_storage.py
+index 5bc36d5..6602246 100644
+--- a/tests/test_storage.py
++++ b/tests/test_storage.py
+@@ -2,6 +2,7 @@ import tempfile
+ import unittest
+ from datetime import date
+ from pathlib import Path
++from unittest import mock
+ 
+ from expenses.models import Expense
+ from expenses.storage import append_expense, load_expenses, remove_last_expense
+@@ -76,6 +77,26 @@ class StorageTests(unittest.TestCase):
+             self.assertEqual(remove_last_expense(path), last)
+             self.assertEqual(load_expenses(path), [first])
+ 
++    def test_remove_last_failed_write_keeps_file(self):
++        original = (
++            b"date,category,amount,note\r\n"
++            b"2026-09-02,food,12.50,lunch\r\n"
++            b"2026-09-03,food,5.00,snack\r\n"
++        )
++
++        def failing_write_text(self, *args, **kwargs):
++            self.write_bytes(b"")  # truncated, as open(..., "w") does
++            raise OSError("disk full")
++
++        with tempfile.TemporaryDirectory() as tmp:
++            path = Path(tmp) / "expenses.csv"
++            path.write_bytes(original)
++            with mock.patch.object(Path, "write_text", failing_write_text):
++                with self.assertRaises(OSError):
++                    remove_last_expense(path)
++            self.assertEqual(path.read_bytes(), original)
++            self.assertEqual(list(Path(tmp).iterdir()), [path])
++
+     def test_remove_last_with_nothing_to_remove(self):
+         with tempfile.TemporaryDirectory() as tmp:
+             missing = Path(tmp) / "missing.csv"

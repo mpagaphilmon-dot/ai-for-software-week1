@@ -1,0 +1,8 @@
+== RED: new regression test against the agent's original storage.py
+AssertionError: b'' != b'date,category,amount,note\r\n2026-09-02,f[45 chars]\r\n'
+Ran 1 test in 0.017s
+FAILED (failures=1)
+== GREEN: full suite with the fix
+Ran 49 tests in 1.072s
+
+OK

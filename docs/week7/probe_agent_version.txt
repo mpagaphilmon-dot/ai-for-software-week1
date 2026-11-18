@@ -1,0 +1,8 @@
+--- probing C:/Users/ADMINI~1/AppData/Local/Temp/claude/0d7e5d3920d35c51/50cba5d5-fe58-41b0-a409-f89c2c240bef/scratchpad/w7copy
+CRLF file (what `add` writes)                  ok
+trailing blank lines                           ok
+header + blank lines only                      ok (None)
+non-UTF-8 byte in a note                       raised UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9 in position 111: invalid continuation byte; file intact: True
+unparseable last row                           raised ValueError: Invalid isoformat string: 'not-a-date'; file intact: True
+write fails mid-undo (disk full)               OSError: No space left on device; expenses left in ledger: 0 of 2; files: ['e.csv']
+100 000-row ledger                             1.55 s, rows left 99999
